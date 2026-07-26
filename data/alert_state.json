@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "comparisons": {
+    "hourly": {
+      "is_active": false,
+      "last_notified_at": null
+    },
+    "daily": {
+      "is_active": false,
+      "last_notified_at": null
+    }
+  },
+  "pending_alert": null
+}

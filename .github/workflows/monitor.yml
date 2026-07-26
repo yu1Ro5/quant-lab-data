@@ -1,0 +1,133 @@
+name: USD/JPY Monitor
+
+on:
+  workflow_dispatch:
+  # Schedule remains disabled until the manual migration checks in README pass.
+  # schedule:
+  #   - cron: "17 * * * 1-5"
+
+concurrency:
+  group: usd-jpy-monitor
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    env:
+      QUANT_LAB_APP_INTERFACE_READY: "false"
+      QUANT_LAB_DATA_DIR: ${{ github.workspace }}/data-repo/data
+      USD_JPY_HOURLY_ALERT_THRESHOLD_PERCENT: ${{ vars.USD_JPY_HOURLY_ALERT_THRESHOLD_PERCENT }}
+      USD_JPY_DAILY_ALERT_THRESHOLD_PERCENT: ${{ vars.USD_JPY_DAILY_ALERT_THRESHOLD_PERCENT }}
+
+    steps:
+      - name: Checkout quant-lab-data
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          path: data-repo
+
+      - name: Checkout pinned quant-lab
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: yu1Ro5/quant-lab
+          ref: 28a9cc27756e78991b7d85ff91bc1bbb78a435c3
+          path: app
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          working-directory: app
+
+      - name: Set up Python
+        working-directory: app
+        run: uv python install 3.12
+
+      - name: Sync locked dependencies
+        working-directory: app
+        run: uv sync --locked
+
+      - name: Verify pinned quant-lab interface
+        working-directory: app
+        shell: bash
+        run: |
+          if [ "$QUANT_LAB_APP_INTERFACE_READY" != "true" ]; then
+            echo "::error::Pinned quant-lab SHA does not yet provide the required prepare/deliver interface."
+            echo "::error::Update the pinned SHA and readiness flag together after quant-lab tests pass."
+            exit 1
+          fi
+
+          uv run python main.py prepare --help >/dev/null
+          uv run python main.py deliver --help >/dev/null
+
+      - name: Prepare data and delivery envelope
+        id: prepare
+        working-directory: app
+        run: |
+          uv run python main.py prepare \
+            --delivery-envelope "$RUNNER_TEMP/usd-jpy-delivery.json" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Validate prepared delivery type
+        env:
+          DELIVERY_KIND: ${{ steps.prepare.outputs.delivery_kind }}
+        shell: bash
+        run: |
+          case "$DELIVERY_KIND" in
+            normal|alert)
+              ;;
+            *)
+              echo "::error::prepare did not return delivery_kind=normal or delivery_kind=alert."
+              exit 1
+              ;;
+          esac
+
+      - name: Persist prepared data
+        id: persist_data
+        working-directory: data-repo
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- \
+            data/usd_jpy.csv \
+            data/usd_jpy_hourly.csv \
+            data/alert_state.json
+
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No prepared data changes to commit."
+            exit 0
+          fi
+
+          git commit -m "Update USD/JPY monitor data"
+          git push
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Deliver Slack notification
+        id: deliver
+        working-directory: app
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL: ${{ secrets.SLACK_CHANNEL }}
+        run: |
+          uv run python main.py deliver \
+            --delivery-envelope "$RUNNER_TEMP/usd-jpy-delivery.json" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Persist successful alert delivery state
+        if: ${{ steps.deliver.outputs.state_changed == 'true' }}
+        working-directory: data-repo
+        shell: bash
+        run: |
+          git add -- data/alert_state.json
+
+          if git diff --cached --quiet; then
+            echo "No alert delivery state change to commit."
+            exit 0
+          fi
+
+          git commit -m "Record USD/JPY alert delivery"
+          git push
