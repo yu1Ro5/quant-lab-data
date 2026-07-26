@@ -7,10 +7,10 @@ GitHub Actions が検証済みの `quant-lab` commit を完全な40文字のSHA�
 
 > [!IMPORTANT]
 > 現在固定している `quant-lab` SHA
-> `28a9cc27756e78991b7d85ff91bc1bbb78a435c3` には、必要な `prepare` / `deliver`
-> CLIと外部データパス対応がまだありません。このため workflow は手動実行専用かつ
-> fail-closed（データ更新やSlack送信より前に停止）です。下記のアプリ側要件を実装・検証し、
-> SHAと `QUANT_LAB_APP_INTERFACE_READY` を同じPRで更新するまで監視処理は動きません。
+> `133dafc5f329b027b18266ca9eba1376ffd20529` には、必要な `prepare` / `deliver`
+> CLIと外部データパス対応が実装済みです。workflowはこのSHAへ固定し、インターフェース確認後に
+> `QUANT_LAB_APP_INTERFACE_READY` を有効化しています。scheduleは手動移行確認が完了するまで
+> コメントアウトしたままです。
 
 ## データ
 
@@ -63,11 +63,13 @@ channel ID、ユーザー情報などの秘密情報は保存しません。
 1. `quant-lab-data` と固定SHAの `quant-lab` を別ディレクトリへcheckoutする。
 2. `quant-lab` で `uv sync --locked` を実行する。
 3. `prepare` がAPI取得、比較、3データファイルの更新、delivery envelope生成を行う。Slackは呼ばない。
+   標準出力JSONは `RUNNER_TEMP` に保存し、`delivery_kind` を検証する。
 4. 3データファイルだけを明示的にstageし、差分がある場合だけcommit/pushする。
-5. データのpush成功後、`deliver` がenvelopeを読みSlackを最大1回呼ぶ。
+5. データのpush成功後、`deliver` がenvelopeを読みSlackを最大1回呼ぶ。標準出力JSONの
+   `state_commit_required` がbooleanであることを検証する。
 6. 強いアラート送信成功で状態が変わった場合だけ、`alert_state.json` を再度commit/pushする。
 
-最初のcommit/pushが失敗した場合はSlackへ進みません。delivery envelope は  
+最初のcommit/pushが失敗した場合はSlackへ進みません。delivery envelope とCLI結果JSONは  
 `RUNNER_TEMP` に置かれ、commit対象になりません。
 
 ## 必要なアプリ側インターフェース
@@ -77,15 +79,15 @@ channel ID、ユーザー情報などの秘密情報は保存しません。
 - `QUANT_LAB_DATA_DIR` から日次CSV、時間別CSV、状態JSONのパスを一箇所で解決する。
 - 1時間bucket、90日保持、45〜90分の比較候補、独立閾値、CLOSE時の抑制を実装する。
 - schema version 1 の状態、3時間クールダウン、最新1件の強いアラート再送を実装する。
-- `python main.py prepare --delivery-envelope PATH --github-output PATH` を提供する。
+- `python main.py prepare --envelope PATH` を提供する。
   - Slack APIを呼ばない。
   - envelopeを `PATH` に作成する。
-  - `--github-output PATH` を受け取り、`delivery_kind=normal` または
-    `delivery_kind=alert` を指定先へ出力する。
-- `python main.py deliver --delivery-envelope PATH --github-output PATH` を提供する。
+  - 標準出力JSONの `delivery_kind` は `normal` または `strong_alert` とする。
+- `python main.py deliver --envelope PATH` を提供する。
   - envelopeだけを入力としてSlackを最大1回呼ぶ。
   - 強いアラート送信成功時だけ状態を更新する。
-  - 状態commitが必要な場合、`state_changed=true` を `$GITHUB_OUTPUT` へ出力する。
+  - 標準出力JSONにbooleanの `state_commit_required` を含める。
+  - `state_commit_required=true` の場合だけ送信後の状態commitを行う。
 - 壊れた時間別CSVや状態JSONを自動初期化・上書きせず、強いアラートを安全側で抑制する。
 
 workflow のCLI引数と出力契約を変更する場合は、`quant-lab` とこのREADME、  
@@ -124,7 +126,7 @@ Secretsの値をログ、CSV、JSON、README、commit messageへ出力しない�
 ## 手動実行とscheduleの有効化
 
 まず **Actions > USD/JPY Monitor > Run workflow** から手動実行します。  
-現在の未対応SHAでは、互換性ガードが意図どおりprepare前に失敗することだけを確認できます。
+固定SHAのインターフェース確認、prepare、データ永続化、deliverの順に成功することを確認します。
 
 対応済みSHAへ更新した後は、テスト用Slack channelを使い、次を順に確認します。
 

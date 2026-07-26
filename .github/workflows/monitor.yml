@@ -17,7 +17,7 @@ jobs:
   monitor:
     runs-on: ubuntu-latest
     env:
-      QUANT_LAB_APP_INTERFACE_READY: "false"
+      QUANT_LAB_APP_INTERFACE_READY: "true"
       QUANT_LAB_DATA_DIR: ${{ github.workspace }}/data-repo/data
       USD_JPY_HOURLY_ALERT_THRESHOLD_PERCENT: ${{ vars.USD_JPY_HOURLY_ALERT_THRESHOLD_PERCENT }}
       USD_JPY_DAILY_ALERT_THRESHOLD_PERCENT: ${{ vars.USD_JPY_DAILY_ALERT_THRESHOLD_PERCENT }}
@@ -32,7 +32,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: yu1Ro5/quant-lab
-          ref: 28a9cc27756e78991b7d85ff91bc1bbb78a435c3
+          ref: 133dafc5f329b027b18266ca9eba1376ffd20529
           path: app
           persist-credentials: false
 
@@ -65,24 +65,32 @@ jobs:
       - name: Prepare data and delivery envelope
         id: prepare
         working-directory: app
-        run: |
-          uv run python main.py prepare \
-            --delivery-envelope "$RUNNER_TEMP/usd-jpy-delivery.json" \
-            --github-output "$GITHUB_OUTPUT"
-
-      - name: Validate prepared delivery type
-        env:
-          DELIVERY_KIND: ${{ steps.prepare.outputs.delivery_kind }}
         shell: bash
         run: |
-          case "$DELIVERY_KIND" in
-            normal|alert)
-              ;;
-            *)
-              echo "::error::prepare did not return delivery_kind=normal or delivery_kind=alert."
-              exit 1
-              ;;
-          esac
+          set -o pipefail
+          uv run python main.py prepare \
+            --envelope "$RUNNER_TEMP/usd-jpy-delivery.json" \
+            | tee "$RUNNER_TEMP/usd-jpy-prepare-result.json"
+
+      - name: Validate prepared delivery type
+        shell: bash
+        run: |
+          jq -e '
+            type == "object"
+            and .status == "prepared"
+            and (
+              .delivery_kind == "normal"
+              or .delivery_kind == "strong_alert"
+            )
+          ' "$RUNNER_TEMP/usd-jpy-prepare-result.json" >/dev/null || {
+            echo "::error::prepare returned invalid JSON or an unknown delivery_kind."
+            exit 1
+          }
+
+          if [ ! -s "$RUNNER_TEMP/usd-jpy-delivery.json" ]; then
+            echo "::error::prepare did not create a delivery envelope."
+            exit 1
+          fi
 
       - name: Persist prepared data
         id: persist_data
@@ -112,13 +120,34 @@ jobs:
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_CHANNEL: ${{ secrets.SLACK_CHANNEL }}
+        shell: bash
         run: |
+          set -o pipefail
           uv run python main.py deliver \
-            --delivery-envelope "$RUNNER_TEMP/usd-jpy-delivery.json" \
-            --github-output "$GITHUB_OUTPUT"
+            --envelope "$RUNNER_TEMP/usd-jpy-delivery.json" \
+            | tee "$RUNNER_TEMP/usd-jpy-deliver-result.json"
+
+          state_commit_required="$(
+            jq -er '
+              if (
+                type == "object"
+                and (
+                  .delivery_kind == "normal"
+                  or .delivery_kind == "strong_alert"
+                )
+                and has("state_commit_required")
+                and ((.state_commit_required | type) == "boolean")
+              )
+              then (.state_commit_required | tostring)
+              else error("deliver returned invalid JSON or state_commit_required")
+              end
+            ' "$RUNNER_TEMP/usd-jpy-deliver-result.json"
+          )"
+          echo "state_commit_required=$state_commit_required" >> "$GITHUB_OUTPUT"
+          echo "state_commit_required=$state_commit_required"
 
       - name: Persist successful alert delivery state
-        if: ${{ steps.deliver.outputs.state_changed == 'true' }}
+        if: ${{ steps.deliver.outputs.state_commit_required == 'true' }}
         working-directory: data-repo
         shell: bash
         run: |
