@@ -1,1 +1,2 @@
 fetched_at,source_timestamp,bucket_start_utc,rate,bid,ask,spread,market_status
+2026-07-26T14:34:09+00:00,2026-07-26T14:34:09.540000+00:00,2026-07-26T14:00:00+00:00,163.8485,163.797,163.9,0.103,CLOSE
