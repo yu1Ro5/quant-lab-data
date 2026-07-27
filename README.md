@@ -9,8 +9,8 @@ GitHub Actions が検証済みの `quant-lab` commit を完全な40文字のSHA�
 > 現在固定している `quant-lab` SHA
 > `133dafc5f329b027b18266ca9eba1376ffd20529` には、必要な `prepare` / `deliver`
 > CLIと外部データパス対応が実装済みです。workflowはこのSHAへ固定し、インターフェース確認後に
-> `QUANT_LAB_APP_INTERFACE_READY` を有効化しています。scheduleは手動移行確認が完了するまで
-> コメントアウトしたままです。
+> `QUANT_LAB_APP_INTERFACE_READY` を有効化しています。手動移行確認と旧 `quant-lab`
+> workflowのschedule停止後、`quant-lab-data` のscheduleを有効化しています。
 
 ## データ
 
@@ -54,9 +54,9 @@ channel ID、ユーザー情報などの秘密情報は保存しません。
 
 ## GitHub Actions
 
-`.github/workflows/monitor.yml` は現在 `workflow_dispatch` のみ有効です。予定するscheduleは  
-平日毎時17分（`17 * * * 1-5`、UTC基準）ですが、段階移行が完了するまでコメントアウトしています。  
-同じ concurrency group と `cancel-in-progress: false` により、手動実行と将来のscheduleを直列化します。
+`.github/workflows/monitor.yml` は `workflow_dispatch` とscheduleを有効にしています。scheduleは  
+UTC月曜00:17〜金曜23:17の毎時17分（`17 * * * 1-5`）で、JSTでは月曜09:17〜土曜08:17です。  
+同じ concurrency group と `cancel-in-progress: false` により、手動実行とscheduleを直列化します。
 
 処理順は次のとおりです。
 
@@ -123,12 +123,13 @@ Secretsの値をログ、CSV、JSON、README、commit messageへ出力しない�
    `QUANT_LAB_APP_INTERFACE_READY` を `"true"` に変更する。
 5. 差分でSHAとアプリ側テスト結果をレビューする。SHA更新は自動化しない。
 
-## 手動実行とscheduleの有効化
+## 手動実行とschedule運用
 
-まず **Actions > USD/JPY Monitor > Run workflow** から手動実行します。  
-固定SHAのインターフェース確認、prepare、データ永続化、deliverの順に成功することを確認します。
+schedule有効化前に **Actions > USD/JPY Monitor > Run workflow** から手動実行し、  
+固定SHAのインターフェース確認、prepare、データ永続化、deliverの順に成功することを確認済みです。
 
-対応済みSHAへ更新した後は、テスト用Slack channelを使い、次を順に確認します。
+旧 `quant-lab` workflowのschedule停止後に、このリポジトリのscheduleを有効化しています。  
+運用中は次を継続して確認します。
 
 1. 初回実行で時間別CSVが1行増え、日次CSVが同日重複しない。
 2. 通常通知に1時間前比・日次比と各基準時刻が表示される。
@@ -136,10 +137,10 @@ Secretsの値をログ、CSV、JSON、README、commit messageへ出力しない�
 4. Slack失敗時もレートと強いアラートの `pending_alert` が先にpush済みである。
 5. 次回にpendingが通常通知より優先され、成功後だけ状態commitが作られる。
 6. `CLOSE`、3時間クールダウン、閾値復帰後の再超過をmockまたは安全な閾値で確認する。
-7. 新workflowが安定してから旧 `quant-lab` workflowを無効化する。
-8. 二重実行がないことを確認してから `monitor.yml` のscheduleコメントを外す。
+7. 旧 `quant-lab` workflowから定期実行されていない。
+8. scheduleと手動実行が重なってもconcurrencyにより直列化される。
 
-旧workflowを先に止めず、新旧scheduleを同時に常用しないでください。
+新旧scheduleを同時に有効化しないでください。
 
 ## 障害時の復旧
 
