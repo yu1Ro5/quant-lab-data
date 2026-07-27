@@ -1,10 +1,12 @@
 name: USD/JPY Monitor
 
 on:
+  schedule:
+    # GitHub Actions cron schedules use UTC.
+    # UTC Monday 00:17–Friday 23:17
+    # JST Monday 09:17–Saturday 08:17
+    - cron: "17 * * * 1-5"
   workflow_dispatch:
-  # Schedule remains disabled until the manual migration checks in README pass.
-  # schedule:
-  #   - cron: "17 * * * 1-5"
 
 concurrency:
   group: usd-jpy-monitor
