@@ -6,7 +6,7 @@
       "last_notified_at": null
     },
     "daily": {
-      "is_active": true,
+      "is_active": false,
       "last_notified_at": "2026-07-31T12:14:43.235814+00:00"
     }
   },
