@@ -10,5 +10,12 @@
       "last_notified_at": "2026-08-03T07:43:57.977451+00:00"
     }
   },
-  "pending_alert": null
+  "pending_alert": {
+    "event_id": "8f4f2e979051f0b54ad4d686",
+    "occurred_at": "2026-08-03T11:41:30.564658+00:00",
+    "triggered_comparisons": [
+      "daily"
+    ],
+    "message": "⚠️ USD/JPY変動アラート\nアラート対象: 日次比\nUSD/JPY 仲値: 156.9845\nbid: 156.982\nask: 156.987\nspread: 0.005\n基準時刻: 2026-08-03T11:41:30.951000+00:00\n市場ステータス: OPEN\n1時間前比: 比較データなし\n\n日次比: -2.30円（-1.44%、円高）\n日次比較基準: 2026-08-01\n設定閾値: 日次: 1.00%"
+  }
 }
