@@ -2,7 +2,7 @@
   "version": 1,
   "comparisons": {
     "hourly": {
-      "is_active": true,
+      "is_active": false,
       "last_notified_at": "2026-08-07T16:07:49.670446+00:00"
     },
     "daily": {
