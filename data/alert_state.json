@@ -6,7 +6,7 @@
       "last_notified_at": "2026-08-19T13:06:49.428328+00:00"
     },
     "daily": {
-      "is_active": true,
+      "is_active": false,
       "last_notified_at": "2026-09-08T11:13:12.696034+00:00"
     }
   },
